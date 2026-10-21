@@ -46,6 +46,12 @@ def initialize_database(conn: sqlite3.Connection | None = None) -> None:
             source_url TEXT NOT NULL, fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(region_code, title, source_url)
         );
+        CREATE TABLE IF NOT EXISTS tax_document_chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, document_name TEXT NOT NULL,
+            page_number INTEGER NOT NULL, chunk_number INTEGER NOT NULL,
+            content TEXT NOT NULL, source_path TEXT NOT NULL,
+            UNIQUE(document_name, page_number, chunk_number)
+        );
         CREATE TABLE IF NOT EXISTS transactions (transaction_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, date TEXT NOT NULL, property_id TEXT NOT NULL, transaction_type TEXT NOT NULL CHECK(transaction_type IN ('buy','sell')), quantity INTEGER NOT NULL CHECK(quantity>0), transaction_price INTEGER NOT NULL CHECK(transaction_price>0), FOREIGN KEY(user_id) REFERENCES users(user_id), FOREIGN KEY(property_id) REFERENCES properties(property_id));
         """)
         try:

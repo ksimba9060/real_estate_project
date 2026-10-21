@@ -78,24 +78,24 @@ def price_history(region_code: str, years: int) -> list[dict[str, Any]]:
             FROM real_estate_prices
             WHERE region_code=? AND deal_date >= date('now', ?)
             GROUP BY substr(deal_date,1,7) ORDER BY month""", (region_code, f"-{years} years")).fetchall()
-    if rows:
-        return [dict(row) | {"is_virtual": 0} for row in rows]
-
     baselines = {"11680": 980_000_000, "11470": 720_000_000, "26350": 610_000_000, "41220": 430_000_000, "36110": 390_000_000}
     rng = random.Random(f"real-estate-demo:{region_code}:{years}")
     total = years * 12
-    baseline = baselines.get(region_code, 500_000_000)
-    monthly_growth = {"11680": .004, "11470": .003, "26350": .002, "41220": .0035, "36110": .0025}.get(region_code, .003)
+    observed_anchor = sum(int(row["average_price"] or 0) for row in rows) / len(rows) if rows else 0
+    baseline = observed_anchor or baselines.get(region_code, 500_000_000)
+    # 공개 실거래 추세를 참고한 교육용 상승률과 변동폭(실제 예측값 아님).
+    monthly_growth = {"11680": .020, "11470": .015, "26350": .011, "41220": .013, "36110": .010}.get(region_code, .012)
     result = []
     for offset in range(total - 1, -1, -1):
         month_index = total - offset
         month_value = baseline * ((1 + monthly_growth) ** month_index)
-        cycle = 1 + 0.035 * (month_index % 12 - 5.5) / 5.5
-        noise = 1 + rng.uniform(-0.018, 0.018)
+        cycle = 1 + 0.16 * ((month_index % 12) / 11 - 0.5)
+        shock = 1 + (0.10 if month_index % 19 == 0 else 0) - (0.08 if month_index % 23 == 0 else 0)
+        noise = 1 + rng.uniform(-0.065, 0.065)
         month = __import__("datetime").date.today().replace(day=1)
         year = month.year + (month.month - 1 - offset) // 12
         month_num = (month.month - 1 - offset) % 12 + 1
-        result.append({"month": f"{year:04d}-{month_num:02d}", "average_price": round(month_value * cycle * noise), "transaction_count": rng.randint(8, 34), "is_virtual": 1})
+        result.append({"month": f"{year:04d}-{month_num:02d}", "average_price": round(month_value * cycle * shock * noise), "transaction_count": rng.randint(8, 34), "is_virtual": 1})
     return result
 
 

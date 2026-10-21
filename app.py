@@ -3,10 +3,9 @@ import streamlit as st
 from datetime import date
 from database import ensure_user, register_user, authenticate_user
 from market import (get_properties, get_user_portfolio, apply_daily_news, buy_property, sell_property,
-                    get_home, set_home, get_interests, add_interest, remove_interest)
-from quiz import get_quiz_questions, submit_quiz_answer, get_coin_balance
+                    get_home, set_home, get_interests, add_interest, remove_interest, get_related_news, estimate_transaction_tax)
+from quiz import get_quiz_questions, submit_quiz_answer, get_coin_balance, has_answered_quiz
 from ai_advisor import ask_ai_advisor, get_or_create_chat_session, get_chat_messages, save_chat_message
-from regulation_rag import sync_regulations
 from public_data import price_history
 from ai_advisor import redeem_advice_credits
 
@@ -25,6 +24,10 @@ html, body, [class*="css"], button, input, textarea, select { font-family:-apple
 .hero p { margin:7px 0 0; color:#111 !important; font-size:14px; }
 .section-title { font-size:20px; font-weight:800; color:var(--ink); margin:24px 0 12px; letter-spacing:-.5px; }
 .property-card, .news-card { background:var(--card); border:1px solid #dfe4ec; border-radius:12px; padding:20px; min-height:150px; box-shadow:none; }
+.property-card { height:205px; overflow:hidden; display:flex; flex-direction:column; }
+.property-card p:last-child { min-height:42px; overflow:hidden; }
+.news-scroll { display:flex; gap:14px; overflow-x:auto; padding:4px 4px 14px; scrollbar-color:#e2c84e #fff8d6; scrollbar-width:thin; }
+.news-scroll .news-card { flex:0 0 280px; min-height:160px; }
 .property-card h4, .news-card h4 { margin:0 0 9px; color:var(--ink); font-size:17px; }
 .property-card p, .news-card p { color:var(--muted); font-size:13px; line-height:1.65; margin:4px 0; }
 .price { font-size:22px; font-weight:800; color:#111 !important; letter-spacing:-.5px; }
@@ -68,6 +71,10 @@ div[data-baseweb="input"] > div { background:#fff; }
 button[kind="secondary"], button[kind="tertiary"] { color:#111 !important; }
 button, input, textarea, select, [role="option"], [role="button"] { color:#111 !important; }
 .stSelectbox label, .stTextInput label, .stNumberInput label { color:#111 !important; }
+.stChatInput, [data-testid="stChatInput"] { background:#fff8d6 !important; border:1px solid #e2c84e !important; border-radius:8px !important; }
+[data-testid="stChatInput"] textarea, [data-testid="stChatInput"] input { background:#fff8d6 !important; color:#111 !important; -webkit-text-fill-color:#111 !important; }
+[data-testid="stChatInput"] textarea::placeholder, [data-testid="stChatInput"] input::placeholder { color:#6b6250 !important; opacity:1 !important; }
+[data-testid="stChatInput"] button { background:#fff0a8 !important; color:#ff7a00 !important; border:0 !important; }
 .stAlert, .stAlert p { color:#111 !important; }
 </style>
 """, unsafe_allow_html=True)
@@ -134,14 +141,36 @@ if not home:
         except ValueError as exc:
             st.error(str(exc))
     st.stop()
-relevant_ids = {home["property_id"], *(item["property_id"] for item in interests)}
+# 뉴스는 사용자의 내 집·실제 보유 자산·관심 매물과 연결된 항목만 노출한다.
+owned_ids = {item["property_id"] for item in portfolio["holdings"]}
+relevant_ids = {home["property_id"], *owned_ids, *(item["property_id"] for item in interests)}
 today_news = [item for item in today_news if item["target_property_id"] in relevant_ids]
+related_news = get_related_news(relevant_ids)
+news_by_property = {item["target_property_id"]: item for item in today_news}
+for item in related_news:
+    news_by_property.setdefault(item["target_property_id"], item)
+today_news = list(news_by_property.values())
 coin_balance = get_coin_balance(user_id)
 st.sidebar.metric("보유 코인", f"{coin_balance}개")
-st.sidebar.caption("상담권 교환: 200코인 → AI 상담 10회")
-if st.sidebar.button("상담권 교환", disabled=coin_balance < 200):
-    redeemed = redeem_advice_credits(user_id)
-    st.sidebar.success(redeemed["message"] if not redeemed["success"] else "상담권 10회가 추가되었습니다.")
+st.sidebar.caption("AI 상담 이용권")
+if st.sidebar.button("상담권 교환 / 가격 보기", key="open_advice_pricing"):
+    st.session_state.advice_pricing_open = not st.session_state.get("advice_pricing_open", False)
+if st.session_state.get("advice_pricing_open", False):
+    st.sidebar.markdown("### AI 상담 이용권")
+    pricing = {
+        "AI 상담 10회 · 3,900원 · 40코인": 10,
+        "AI 상담 20회 · 7,500원 · 80코인": 20,
+        "AI 상담 50회 · 19,000원 · 200코인": 50,
+        "AI 상담 무제한 · 30,000원": 0,
+    }
+    selected_plan = st.sidebar.radio("상품 선택", list(pricing), key="advice_plan")
+    if st.sidebar.button("결제하기", key="advice_payment", use_container_width=True):
+        st.sidebar.info("결제 기능은 현재 준비 중입니다. 가격표만 먼저 적용되어 있습니다.")
+    st.sidebar.divider()
+    st.sidebar.caption("코인으로 교환하려면 200코인으로 AI 상담 10회를 받을 수 있습니다.")
+    if st.sidebar.button("200코인으로 10회 교환", key="redeem_advice", disabled=coin_balance < 200):
+        redeemed = redeem_advice_credits(user_id)
+        st.sidebar.success(redeemed["message"] if not redeemed["success"] else "상담권 10회가 추가되었습니다.")
 
 available = [p for p in properties if p["property_id"] not in {home["property_id"], *(x["property_id"] for x in interests)}]
 
@@ -165,7 +194,7 @@ def show_news_popup():
         st.markdown("#### 이 뉴스, AI에게 바로 물어보세요")
         popup_question = st.text_area(
             "상담 질문",
-            value="오늘 뉴스가 제 포트폴리오에 어떤 영향을 줄 수 있나요?",
+            value="",
             key="popup_ai_question",
         )
         if st.button("AI 상담 시작", type="primary", use_container_width=True):
@@ -182,20 +211,21 @@ def show_news_panel():
     """Streamlit 초기 렌더링에서도 확실히 보이는 뉴스 팝업 패널."""
     with st.container(border=True):
         st.markdown('<h2><span class="ui-icon pink">!</span>오늘의 뉴스</h2>', unsafe_allow_html=True)
-        st.caption(f"{today.isoformat()} · 오늘 시장에 반영된 주요 소식")
+        st.caption(f"{today.isoformat()} · 보유 자산과 관심 매물에 연결된 오늘·최근 주요 소식")
         if not today_news:
             st.info("오늘 등록된 뉴스가 없습니다.")
         else:
-            news_cols = st.columns(min(3, len(today_news)))
-            for col, item in zip(news_cols, today_news):
+            cards = []
+            for item in today_news:
                 positive = item["price_impact_rate"] >= 0
                 badge = "호재" if positive else "규제·악재"
-                with col:
-                    st.markdown(f'<div class="news-card"><span class="{"badge-good" if positive else "badge-bad"}">{badge}</span><h4>{item["title"]}</h4><p>{item["summary"]}</p><p><b>{"+" if positive else ""}{item["price_impact_rate"]:.1%}</b> 예상 영향</p></div>', unsafe_allow_html=True)
+                badge_class = "badge-good" if positive else "badge-bad"
+                cards.append(f'<div class="news-card"><span class="{badge_class}">{badge}</span><h4>{item["title"]}</h4><p>{item["summary"]}</p><p><b>{"+" if positive else ""}{item["price_impact_rate"]:.1%}</b> 예상 영향</p></div>')
+            st.markdown('<div class="news-scroll">' + ''.join(cards) + '</div>', unsafe_allow_html=True)
         st.markdown("#### 이 뉴스에 대해 바로 AI에게 질문하기")
         first_question = st.text_input(
             "질문",
-            value="오늘 뉴스가 제 포트폴리오에 어떤 영향을 줄 수 있나요?",
+            value="",
             key="first_news_question",
         )
         if st.button("뉴스 기반 AI 상담", type="primary", key="first_news_advice"):
@@ -205,7 +235,7 @@ def show_news_panel():
             else:
                 st.error(result["message"])
 
-# 뉴스는 로그인 직후 모달 팝업으로만 표시합니다.
+# 뉴스는 메인 화면 고정 패널에서 표시합니다.
 
 def show_ai_welcome_popup():
     @st.dialog("AI 부동산 상담")
@@ -214,7 +244,7 @@ def show_ai_welcome_popup():
         st.write("현재 포트폴리오와 오늘의 시장 뉴스를 바탕으로 AI가 상담해드립니다.")
         popup_question = st.text_area(
             "상담 질문",
-            placeholder="예: 지금 내 포트폴리오에서 가장 먼저 공부할 점은 무엇인가요?",
+            placeholder="",
             key="welcome_ai_question",
         )
         c1, c2 = st.columns(2)
@@ -238,18 +268,10 @@ def show_ai_welcome_popup():
                 st.session_state.ai_popup_closed = True
                 st.rerun()
 
-if st.session_state.get("news_popup_user") != user_id:
-    st.session_state.news_popup_user = user_id
-    st.session_state.news_popup_closed = False
-if "news_popup_closed" not in st.session_state:
-    st.session_state.news_popup_closed = False
-if not st.session_state.news_popup_closed:
-    show_news_popup()
+# 뉴스는 팝업이 아니라 메인 화면의 고정 패널로 표시한다.
+show_news_panel()
 
-if st.button("오늘의 뉴스 다시 보기", type="secondary"):
-    show_news_popup()
-
-tabs = st.tabs(["홈", "지역 시장", "거래", "퀴즈", "AI 상담"])
+tabs = st.tabs(["홈", "매물 검색", "거래", "퀴즈", "AI 상담"])
 with tabs[0]:
     st.markdown('<div class="section-title">오늘의 자산 현황</div>', unsafe_allow_html=True)
     c1,c2,c3,c4=st.columns(4); c1.metric("총 보유자산", f"{portfolio['total_assets']:,}원"); c2.metric("현금", f"{portfolio['cash']:,}원"); c3.metric("부동산 평가액", f"{portfolio['holdings_value']:,}원"); c4.metric("보유 코인", f"{portfolio['coins']}개")
@@ -264,12 +286,13 @@ with tabs[0]:
         st.info("아직 보유한 부동산이 없습니다. 지역 시장에서 매물을 살펴보세요.")
     st.markdown('<div class="section-title"><span class="ui-icon yellow">★</span>관심 매물</div>', unsafe_allow_html=True)
     if interests:
-        interest_cols = st.columns(min(3, len(interests)))
-        for col, item in zip(interest_cols, interests):
-            with col:
-                st.markdown(f'<div class="property-card"><h4><span class="icon-chip">★</span>{item["name"]}</h4><div class="price">{item["current_price"]:,}원</div><p>관심 매물 · 가상 시장 가격</p></div>', unsafe_allow_html=True)
-                if st.button("관심 해제", key=f"remove_home_{item['property_id']}", use_container_width=True):
-                    remove_interest(user_id, item["property_id"]); st.rerun()
+        for start in range(0, len(interests), 3):
+            interest_cols = st.columns(3)
+            for col, item in zip(interest_cols, interests[start:start + 3]):
+                with col:
+                    st.markdown(f'<div class="property-card"><h4><span class="icon-chip">★</span>{item["name"]}</h4><div class="price">{item["current_price"]:,}원</div><p>관심 매물 · 가상 시장 가격</p></div>', unsafe_allow_html=True)
+                    if st.button("관심 해제", key=f"remove_home_{item['property_id']}", use_container_width=True):
+                        remove_interest(user_id, item["property_id"]); st.rerun()
     else:
         st.info("아직 관심 매물이 없습니다.")
     if available:
@@ -280,31 +303,30 @@ with tabs[0]:
             if st.button("＋", key="home_add_interest", type="primary", help="관심 매물 추가", use_container_width=True):
                 add_interest(user_id, interest_choice["property_id"]); st.rerun()
 with tabs[1]:
-    st.markdown('<div class="section-title">지역 시장</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title"><span class="ui-icon yellow">⌕</span>매물 검색</div>', unsafe_allow_html=True)
     st.caption("가상 지역별 매물과 시장 정보를 검색해보세요.")
     region_names = sorted({item["region_name"] for item in properties if item.get("region_name")})
-    search_col, region_col = st.columns([1.4, 1], gap="medium")
+    search_col, region_col = st.columns([1.4, 1], gap="medium", vertical_alignment="bottom")
     with search_col:
-        st.markdown('<span class="ui-icon yellow">⌕</span><b>매물 검색</b>', unsafe_allow_html=True)
-        property_query = st.text_input("매물 검색", placeholder="예: 공원, 역세권, 신산업", key="property_query")
+        property_query = st.text_input("매물 검색", placeholder="", key="property_query")
     with region_col:
         selected_region = st.selectbox("지역 필터", ["전체 지역"] + region_names, key="selected_region")
     filtered_properties = [item for item in properties if
         (selected_region == "전체 지역" or item.get("region_name") == selected_region) and
         (not property_query.strip() or property_query.strip().lower() in f"{item['name']} {item['characteristics']}".lower())]
     st.caption(f"검색 결과 {len(filtered_properties)}개")
-    for start in range(0, len(filtered_properties), 3):
-        cols = st.columns(3)
-        for col, item in zip(cols, filtered_properties[start:start+3]):
+    for start in range(0, len(filtered_properties), 4):
+        cols = st.columns(4)
+        for col, item in zip(cols, filtered_properties[start:start+4]):
             with col:
                 home_badge = " · 내 집" if item["property_id"] == home["property_id"] else ""
-                st.markdown(f'<div class="property-card"><h4><span class="icon-chip">R</span>{item["name"]}{home_badge}</h4><div class="price">{item["current_price"]:,}원</div><p>{item["characteristics"]}</p></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="property-card"><h4><span class="icon-chip">R</span>{item["name"]}{home_badge}</h4><p>{item["region_name"]}</p><div class="price">{item["current_price"]:,}원</div><p>{item["characteristics"]}</p></div>', unsafe_allow_html=True)
     if not filtered_properties:
         st.info("검색 조건에 맞는 매물이 없습니다.")
     st.divider()
     st.subheader("지역별 실거래가 추이")
     chart_properties = [p for p in properties if p.get("region_code")]
-    chart_property = st.selectbox("차트를 볼 지역", chart_properties, format_func=lambda p: p["name"], key="chart_property")
+    chart_property = st.selectbox("차트를 볼 지역", chart_properties, format_func=lambda p: f"{p['region_name']} · {p['name']}", key="chart_property")
     chart_years = st.radio("조회 기간", [1, 3, 5, 10], format_func=lambda n: f"{n}년", horizontal=True, key="chart_years")
     history = price_history(chart_property["region_code"], chart_years)
     if history:
@@ -328,40 +350,48 @@ with tabs[2]:
     with qty_col:
         st.markdown('<span class="ui-icon yellow" style="width:24px;height:24px">#</span><b>수량</b>', unsafe_allow_html=True)
         qty=st.number_input("수량", min_value=1, value=1, step=1, label_visibility="collapsed")
+        trade_total = selected["current_price"] * qty
+        buy_tax = estimate_transaction_tax(trade_total, "buy")
+        sell_tax = estimate_transaction_tax(trade_total, "sell")
+        st.caption(f"세금 추정 · 매수 +{buy_tax:,}원 / 매도 -{sell_tax:,}원")
     with action_col:
         if st.button("매수  →", use_container_width=True):
-            try: buy_property(user_id,selected["property_id"],qty); st.success("매수했습니다."); st.rerun()
+            try:
+                result = buy_property(user_id,selected["property_id"],qty)
+                st.success(f"매수했습니다. 세금 추정 {result['tax']:,}원 포함 총 {result['settlement_total']:,}원")
+                st.rerun()
             except ValueError as e: st.error(str(e))
         if st.button("매도  →", use_container_width=True):
-            try: sell_property(user_id,selected["property_id"],qty); st.success("매도했습니다."); st.rerun()
+            try:
+                result = sell_property(user_id,selected["property_id"],qty)
+                st.success(f"매도했습니다. 세금 추정 {result['tax']:,}원 차감 후 {result['settlement_total']:,}원 반영")
+                st.rerun()
             except ValueError as e: st.error(str(e))
 with tabs[3]:
     st.subheader("오늘의 퀴즈")
-    for q in get_quiz_questions():
+    for q in get_quiz_questions(user_id):
         answer=st.radio(q["question"],q["choices"],key=q["id"])
-        if st.button("제출",key=f"submit_{q['id']}"):
-            result=submit_quiz_answer(user_id,q["id"],q["choices"].index(answer),today); st.info(("정답입니다! +10코인" if result["correct"] else "오답입니다.")+" "+result.get("message",result["explanation"]))
+        if has_answered_quiz(user_id, q["id"], today):
+            st.success("오늘 이미 푼 문제입니다.")
+        elif st.button("제출",key=f"submit_{q['id']}"):
+            result=submit_quiz_answer(user_id,q["id"],q["choices"].index(answer),today)
+            st.info(("정답입니다! +10코인" if result["correct"] else "오답입니다.")+" "+result.get("message",result.get("explanation", "")))
 with tabs[4]:
     st.markdown('<h3><span class="ui-icon lavender">✦</span>AI 투자 상담</h3>', unsafe_allow_html=True)
     if home.get("region_code"):
         st.caption(f"실거래가 차트: 국토부 공개 추세를 참고한 교육용 가상 데이터 · {home['region_name']}")
-        st.caption(f"규제 RAG 기준 지역: {home['region_name']} · 화면을 열 때는 API를 호출하지 않습니다.")
-        if st.button("법제처 규제 정보 새로고침", key="refresh_regulations"):
-            try:
-                result = sync_regulations(home["region_code"], home["region_name"])
-                st.success(f"{result['saved']}건을 SQLite에 저장했습니다. 이후 상담부터 검색 근거로 사용합니다.")
-            except RuntimeError as exc:
-                st.error(str(exc))
-    st.caption("테스트 모드: 상담 횟수 제한 없이 OpenAI LLM과 대화할 수 있습니다. 현재 포트폴리오와 오늘의 뉴스도 함께 참고합니다.")
+    st.caption("하루 무료 AI 상담 5회 · 현재 포트폴리오와 오늘의 뉴스도 함께 참고합니다.")
     if st.session_state.get("advisor_user") != user_id:
         st.session_state.advisor_session_id = get_or_create_chat_session(user_id)
         st.session_state.advisor_messages = get_chat_messages(st.session_state.advisor_session_id, user_id)
         st.session_state.advisor_user = user_id
-    for message in st.session_state.advisor_messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    if st.session_state.advisor_messages:
+        with st.expander(f"이전 상담 기록 ({len(st.session_state.advisor_messages)}개)", expanded=False):
+            for message in st.session_state.advisor_messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
     st.markdown('<span class="ui-icon lavender">?</span><b>AI에게 질문하기</b>', unsafe_allow_html=True)
-    question = st.chat_input("예: 현금 비중을 어떻게 공부하면 좋을까요?")
+    question = st.chat_input("")
     if question:
         st.session_state.advisor_messages.append({"role":"user", "content":question})
         save_chat_message(st.session_state.advisor_session_id, user_id, "user", question)
