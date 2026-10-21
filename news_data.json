@@ -1,1 +1,12 @@
-[]
+[
+  {"date":"2026-10-21","title":"도심 업무지구 교통망 확충 계획 발표","type":"development","target_property_id":"metro_center","price_impact_rate":0.035,"summary":"광역 교통망 개선 기대감이 반영됩니다."},
+  {"date":"2026-10-21","title":"교육 특화 단지 학군 수요 증가","type":"demand","target_property_id":"education_town","price_impact_rate":0.02,"summary":"학군을 중시하는 실수요가 늘었다는 가상 시장 소식입니다."},
+  {"date":"2026-10-22","title":"해안 관광지 비수기 소비 둔화","type":"economy","target_property_id":"coastal_hub","price_impact_rate":-0.025,"summary":"관광 비수기 영향으로 단기 기대가 낮아졌습니다."},
+  {"date":"2026-10-23","title":"친환경 산업단지 입주 기업 확대","type":"development","target_property_id":"green_industry","price_impact_rate":0.04,"summary":"신규 고용과 배후 주거 수요 가능성이 언급됩니다."},
+  {"date":"2026-10-24","title":"신도시 공급 물량 확대 예고","type":"supply","target_property_id":"newtown_lake","price_impact_rate":-0.018,"summary":"향후 공급 증가 가능성이 단기 기대에 영향을 줍니다."},
+  {"date":"2026-10-21","title":"리버사이드 수변공원 확장안 공개","type":"development","target_property_id":"river_side","price_impact_rate":0.028,"summary":"수변공원과 보행 인프라 확충으로 주거 선호가 높아질 수 있습니다."},
+  {"date":"2026-10-21","title":"테크 밸리 기업 이전 세제 혜택 발표","type":"policy","target_property_id":"tech_valley","price_impact_rate":0.045,"summary":"기업 유입과 직주근접 수요 확대 기대가 반영됩니다."},
+  {"date":"2026-10-21","title":"헤리티지 빌리지 정비구역 규제 검토","type":"regulation","target_property_id":"heritage_village","price_impact_rate":-0.022,"summary":"정비사업 관련 규제 검토로 사업 일정의 불확실성이 커졌습니다."},
+  {"date":"2026-10-21","title":"에어포트 시티 심야 소음관리 기준 강화","type":"regulation","target_property_id":"airport_city","price_impact_rate":-0.015,"summary":"소음관리 기준 강화가 일부 수요와 임대 기대에 영향을 줄 수 있습니다."},
+  {"date":"2026-10-21","title":"포레스트 힐스 산림휴양시설 예산 확정","type":"development","target_property_id":"forest_hills","price_impact_rate":0.031,"summary":"생활환경 개선과 체류형 관광 수요 확대가 기대됩니다."}
+]
