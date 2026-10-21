@@ -1,6 +1,7 @@
 """Virtual market, daily news effects, and buy/sell operations."""
 from __future__ import annotations
 import json
+import random
 from datetime import date as Date
 from pathlib import Path
 from database import ensure_user, get_connection
@@ -16,18 +17,58 @@ PROPERTIES = (
     ("heritage_village", "헤리티지 빌리지", 360_000_000, "구도심 재생과 문화 상권이 진행 중인 지역"),
     ("airport_city", "에어포트 시티", 430_000_000, "공항 접근성과 물류 산업의 영향을 받는 지역"),
     ("forest_hills", "포레스트 힐스", 295_000_000, "녹지와 쾌적성을 중시하는 주거 지역"),
+    ("sunset_bay", "선셋 베이", 455_000_000, "해변 산책로와 상업시설이 가까운 생활권"),
+    ("central_garden", "센트럴 가든", 575_000_000, "도심 공원과 업무지구를 잇는 주거 지역"),
+    ("smart_square", "스마트 스퀘어", 635_000_000, "신산업 기업과 교통망이 모이는 지역"),
+    ("blue_river", "블루 리버", 410_000_000, "수변 조망과 신축 주거 수요가 있는 지역"),
+    ("morning_village", "모닝 빌리지", 335_000_000, "조용한 생활환경과 학교 수요가 강한 지역"),
+    ("urban_forest", "어반 포레스트", 515_000_000, "도심 속 녹지와 문화시설을 누리는 지역"),
+    ("innovation_port", "이노베이션 포트", 495_000_000, "물류·산업 개발과 교통 호재가 있는 지역"),
+    ("hilltop_station", "힐탑 스테이션", 445_000_000, "역세권과 언덕 조망을 함께 갖춘 지역"),
+    ("silver_lake", "실버 레이크", 375_000_000, "호수공원과 여유로운 주거환경이 강점인 지역"),
+    ("nova_district", "노바 디스트릭트", 705_000_000, "첨단 업무시설과 고급 주거 수요가 공존하는 지역"),
 )
 NEWS_PATH = Path(__file__).with_name("news_data.json")
 
+# The simulator keeps its game indicators, but each core market now maps to an
+# actual Korean administrative region used by public-data ingestion and RAG.
+# 화면용 가상 행정구역. 매물 20개를 5개 구에 고르게 분산 배정한다.
+VIRTUAL_DISTRICTS = ("해솔구", "별빛구", "새롬구", "푸른구", "가람구")
+_shuffled_property_ids = [item[0] for item in PROPERTIES]
+random.Random("hometech-district-assignment").shuffle(_shuffled_property_ids)
+PROPERTY_REGIONS = {
+    property_id: (f"VREG{index % 5 + 1:02d}", VIRTUAL_DISTRICTS[index % 5])
+    for index, property_id in enumerate(_shuffled_property_ids)
+}
+
 def _seed(conn):
     conn.executemany("INSERT OR IGNORE INTO properties(property_id,name,current_price,characteristics) VALUES(?,?,?,?)", PROPERTIES)
+    property_names = {item[0]: item[1] for item in PROPERTIES}
+    for property_id, (region_code, region_name) in PROPERTY_REGIONS.items():
+        conn.execute(
+            "UPDATE properties SET name=?, region_code=?, region_name=? WHERE property_id=?",
+            (property_names[property_id], region_code, region_name, property_id),
+        )
     conn.executemany("INSERT OR IGNORE INTO news(date,title,type,target_property_id,price_impact_rate,summary) VALUES(:date,:title,:type,:target_property_id,:price_impact_rate,:summary)", json.loads(NEWS_PATH.read_text(encoding="utf-8")))
     conn.commit()
 
 def get_properties():
     with get_connection() as conn:
         _seed(conn)
-        return [dict(r) for r in conn.execute("SELECT property_id,name,current_price,characteristics FROM properties ORDER BY property_id")]
+        return [dict(r) for r in conn.execute("SELECT property_id,name,current_price,characteristics,region_code,region_name FROM properties ORDER BY property_id")]
+
+def get_related_news(property_ids):
+    """Return the latest stored news for each owned/interested property."""
+    ids = list(property_ids)
+    if not ids:
+        return []
+    placeholders = ",".join("?" for _ in ids)
+    with get_connection() as conn:
+        rows = conn.execute(f"SELECT news_id,date,title,type,target_property_id,price_impact_rate,summary FROM news WHERE target_property_id IN ({placeholders}) ORDER BY date DESC, news_id DESC", ids).fetchall()
+    latest = {}
+    for row in rows:
+        latest.setdefault(row["target_property_id"], dict(row))
+    return list(latest.values())
 
 def get_home(user_id):
     with get_connection() as conn:
@@ -54,6 +95,11 @@ def add_interest(user_id, property_id):
 def remove_interest(user_id, property_id):
     with get_connection() as conn:
         conn.execute("DELETE FROM user_interests WHERE user_id=? AND property_id=?", (user_id, property_id)); conn.commit()
+
+def estimate_transaction_tax(price, kind):
+    """Educational-only tax estimate; not a legal or tax filing calculation."""
+    rate = 0.011 if kind == "buy" else 0.06
+    return round(price * rate)
 
 def get_user_portfolio(user_id):
     with get_connection() as conn:
@@ -84,20 +130,21 @@ def _trade(user_id, property_id, quantity, kind):
         prop = conn.execute("SELECT current_price FROM properties WHERE property_id=?", (property_id,)).fetchone()
         if not prop: raise ValueError("unknown property_id")
         price, total = prop["current_price"], prop["current_price"] * quantity
+        tax = estimate_transaction_tax(total, kind)
         holding = conn.execute("SELECT quantity,average_purchase_price FROM holdings WHERE user_id=? AND property_id=?", (user_id,property_id)).fetchone()
         if kind == "buy":
             cash = conn.execute("SELECT cash FROM users WHERE user_id=?", (user_id,)).fetchone()["cash"]
-            if total > cash: raise ValueError("insufficient cash for this purchase")
+            if total + tax > cash: raise ValueError("세금을 포함한 매수 금액이 보유 현금을 초과합니다.")
             old_quantity = holding["quantity"] if holding else 0; old_cost = old_quantity * (holding["average_purchase_price"] if holding else 0)
-            conn.execute("UPDATE users SET cash=cash-? WHERE user_id=?", (total,user_id))
+            conn.execute("UPDATE users SET cash=cash-? WHERE user_id=?", (total + tax,user_id))
             conn.execute("INSERT INTO holdings(user_id,property_id,quantity,average_purchase_price) VALUES(?,?,?,?) ON CONFLICT(user_id,property_id) DO UPDATE SET quantity=excluded.quantity,average_purchase_price=excluded.average_purchase_price", (user_id,property_id,old_quantity+quantity,(old_cost+total)/(old_quantity+quantity)))
         else:
             if not holding or quantity > holding["quantity"]: raise ValueError("insufficient holdings for this sale")
-            left = holding["quantity"]-quantity; conn.execute("UPDATE users SET cash=cash+? WHERE user_id=?", (total,user_id))
+            left = holding["quantity"]-quantity; conn.execute("UPDATE users SET cash=cash+? WHERE user_id=?", (total - tax,user_id))
             if left: conn.execute("UPDATE holdings SET quantity=? WHERE user_id=? AND property_id=?", (left,user_id,property_id))
             else: conn.execute("DELETE FROM holdings WHERE user_id=? AND property_id=?", (user_id,property_id))
         conn.execute("INSERT INTO transactions(user_id,date,property_id,transaction_type,quantity,transaction_price) VALUES(?,?,?,?,?,?)", (user_id,Date.today().isoformat(),property_id,kind,quantity,price)); conn.commit()
-    return {"success":True,"type":kind,"property_id":property_id,"quantity":quantity,"price":price,"total":total}
+    return {"success":True,"type":kind,"property_id":property_id,"quantity":quantity,"price":price,"total":total,"tax":tax,"settlement_total":total + tax if kind == "buy" else total - tax}
 
 def buy_property(user_id, property_id, quantity): return _trade(user_id, property_id, quantity, "buy")
 def sell_property(user_id, property_id, quantity): return _trade(user_id, property_id, quantity, "sell")

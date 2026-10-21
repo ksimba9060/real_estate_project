@@ -34,12 +34,35 @@ def initialize_database(conn: sqlite3.Connection | None = None) -> None:
         CREATE TABLE IF NOT EXISTS user_interests (user_id TEXT NOT NULL, property_id TEXT NOT NULL, added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,property_id), FOREIGN KEY(user_id) REFERENCES users(user_id), FOREIGN KEY(property_id) REFERENCES properties(property_id));
         CREATE TABLE IF NOT EXISTS chat_sessions (session_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, title TEXT NOT NULL DEFAULT 'AI 부동산 상담', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(user_id));
         CREATE TABLE IF NOT EXISTS chat_messages (message_id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER NOT NULL, role TEXT NOT NULL CHECK(role IN ('user','assistant')), content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(session_id) REFERENCES chat_sessions(session_id) ON DELETE CASCADE);
+        CREATE TABLE IF NOT EXISTS real_estate_prices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, region_code TEXT NOT NULL, region_name TEXT NOT NULL,
+            property_name TEXT NOT NULL, deal_date TEXT NOT NULL, deal_price INTEGER NOT NULL,
+            area REAL, floor INTEGER, source TEXT NOT NULL, fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(region_code, property_name, deal_date, deal_price, area, floor, source)
+        );
+        CREATE TABLE IF NOT EXISTS real_estate_regulations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, region_code TEXT NOT NULL, title TEXT NOT NULL,
+            restriction_type TEXT NOT NULL, description TEXT NOT NULL, effective_date TEXT,
+            source_url TEXT NOT NULL, fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(region_code, title, source_url)
+        );
+        CREATE TABLE IF NOT EXISTS tax_document_chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, document_name TEXT NOT NULL,
+            page_number INTEGER NOT NULL, chunk_number INTEGER NOT NULL,
+            content TEXT NOT NULL, source_path TEXT NOT NULL,
+            UNIQUE(document_name, page_number, chunk_number)
+        );
         CREATE TABLE IF NOT EXISTS transactions (transaction_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, date TEXT NOT NULL, property_id TEXT NOT NULL, transaction_type TEXT NOT NULL CHECK(transaction_type IN ('buy','sell')), quantity INTEGER NOT NULL CHECK(quantity>0), transaction_price INTEGER NOT NULL CHECK(transaction_price>0), FOREIGN KEY(user_id) REFERENCES users(user_id), FOREIGN KEY(property_id) REFERENCES properties(property_id));
         """)
         try:
             conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
         except sqlite3.OperationalError:
             pass
+        for column in ("region_code TEXT", "region_name TEXT"):
+            try:
+                conn.execute(f"ALTER TABLE properties ADD COLUMN {column}")
+            except sqlite3.OperationalError:
+                pass
         conn.commit()
     finally:
         if owns: conn.close()
