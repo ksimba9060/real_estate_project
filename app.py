@@ -61,6 +61,12 @@ h1, h2, h3, h4, h5, h6 { color:var(--ink) !important; }
 [data-testid="stVerticalBlockBorderWrapper"] { border-color:#bfc5cf; border-radius:4px; background:#fff; }
 div[data-baseweb="input"] > div, div[data-baseweb="select"] > div { border-radius:4px; border:1px solid #d8b83d; }
 div[data-baseweb="input"] input, div[data-baseweb="select"] *, textarea { color:var(--ink) !important; -webkit-text-fill-color:var(--ink) !important; }
+input[type="text"], input[type="password"], input[type="number"], textarea,
+[data-testid="stTextInput"] input, [data-testid="stNumberInput"] input,
+[data-testid="stChatInput"] textarea { background:#fff !important; color:#111 !important; -webkit-text-fill-color:#111 !important; caret-color:#ff7a00 !important; opacity:1 !important; }
+input[type="text"]::placeholder, input[type="password"]::placeholder, input[type="number"]::placeholder,
+textarea::placeholder, [data-testid="stChatInput"] textarea::placeholder { color:#8a8170 !important; -webkit-text-fill-color:#8a8170 !important; opacity:1 !important; }
+div[data-baseweb="input"]:has(input) { background:#fff !important; color:#111 !important; border-color:#e2c84e !important; }
 div[data-baseweb="select"] > div { background:#fff8d6 !important; color:#111 !important; border-color:#e2c84e !important; }
 div[data-baseweb="select"] svg { fill:#ff7a00 !important; color:#ff7a00 !important; }
 div[data-baseweb="select"] [role="option"] { background:#fff8d6 !important; color:#111 !important; }
