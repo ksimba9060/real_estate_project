@@ -11,6 +11,11 @@ PROPERTIES = (
     ("coastal_hub", "코스탈 허브", 470_000_000, "관광·상권 변동성이 있는 해안 지역"),
     ("green_industry", "그린 인더스트리", 540_000_000, "친환경 산업단지 배후 지역"),
     ("newtown_lake", "레이크 뉴타운", 390_000_000, "개발과 공급 이슈가 공존하는 신도시"),
+    ("river_side", "리버사이드", 510_000_000, "수변 주거와 생활 인프라가 강점인 지역"),
+    ("tech_valley", "테크 밸리", 680_000_000, "IT 기업과 직주근접 수요가 모이는 지역"),
+    ("heritage_village", "헤리티지 빌리지", 360_000_000, "구도심 재생과 문화 상권이 진행 중인 지역"),
+    ("airport_city", "에어포트 시티", 430_000_000, "공항 접근성과 물류 산업의 영향을 받는 지역"),
+    ("forest_hills", "포레스트 힐스", 295_000_000, "녹지와 쾌적성을 중시하는 주거 지역"),
 )
 NEWS_PATH = Path(__file__).with_name("news_data.json")
 
@@ -23,6 +28,32 @@ def get_properties():
     with get_connection() as conn:
         _seed(conn)
         return [dict(r) for r in conn.execute("SELECT property_id,name,current_price,characteristics FROM properties ORDER BY property_id")]
+
+def get_home(user_id):
+    with get_connection() as conn:
+        _seed(conn); ensure_user(conn, user_id)
+        row = conn.execute("SELECT p.* FROM user_home h JOIN properties p ON p.property_id=h.property_id WHERE h.user_id=?", (user_id,)).fetchone()
+        return dict(row) if row else None
+
+def set_home(user_id, property_id):
+    with get_connection() as conn:
+        _seed(conn); ensure_user(conn, user_id)
+        if not conn.execute("SELECT 1 FROM properties WHERE property_id=?", (property_id,)).fetchone(): raise ValueError("unknown property_id")
+        conn.execute("INSERT OR REPLACE INTO user_home(user_id,property_id) VALUES(?,?)", (user_id, property_id)); conn.commit()
+
+def get_interests(user_id):
+    with get_connection() as conn:
+        _seed(conn); ensure_user(conn, user_id)
+        return [dict(r) for r in conn.execute("SELECT p.* FROM user_interests i JOIN properties p ON p.property_id=i.property_id WHERE i.user_id=? ORDER BY p.name", (user_id,))]
+
+def add_interest(user_id, property_id):
+    with get_connection() as conn:
+        _seed(conn); ensure_user(conn, user_id)
+        conn.execute("INSERT OR IGNORE INTO user_interests(user_id,property_id) VALUES(?,?)", (user_id, property_id)); conn.commit()
+
+def remove_interest(user_id, property_id):
+    with get_connection() as conn:
+        conn.execute("DELETE FROM user_interests WHERE user_id=? AND property_id=?", (user_id, property_id)); conn.commit()
 
 def get_user_portfolio(user_id):
     with get_connection() as conn:
