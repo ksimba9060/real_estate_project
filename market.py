@@ -19,15 +19,30 @@ PROPERTIES = (
 )
 NEWS_PATH = Path(__file__).with_name("news_data.json")
 
+# The simulator keeps its game indicators, but each core market now maps to an
+# actual Korean administrative region used by public-data ingestion and RAG.
+PROPERTY_REGIONS = {
+    "metro_center": ("11680", "서울 강남구"),
+    "education_town": ("11470", "서울 양천구"),
+    "coastal_hub": ("26350", "부산 해운대구"),
+    "green_industry": ("41220", "경기 평택시"),
+    "newtown_lake": ("36110", "세종시"),
+}
+
 def _seed(conn):
     conn.executemany("INSERT OR IGNORE INTO properties(property_id,name,current_price,characteristics) VALUES(?,?,?,?)", PROPERTIES)
+    for property_id, (region_code, region_name) in PROPERTY_REGIONS.items():
+        conn.execute(
+            "UPDATE properties SET name=?, region_code=?, region_name=? WHERE property_id=?",
+            (region_name, region_code, region_name, property_id),
+        )
     conn.executemany("INSERT OR IGNORE INTO news(date,title,type,target_property_id,price_impact_rate,summary) VALUES(:date,:title,:type,:target_property_id,:price_impact_rate,:summary)", json.loads(NEWS_PATH.read_text(encoding="utf-8")))
     conn.commit()
 
 def get_properties():
     with get_connection() as conn:
         _seed(conn)
-        return [dict(r) for r in conn.execute("SELECT property_id,name,current_price,characteristics FROM properties ORDER BY property_id")]
+        return [dict(r) for r in conn.execute("SELECT property_id,name,current_price,characteristics,region_code,region_name FROM properties ORDER BY property_id")]
 
 def get_home(user_id):
     with get_connection() as conn:

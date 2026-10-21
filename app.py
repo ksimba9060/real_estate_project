@@ -6,6 +6,7 @@ from market import (get_properties, get_user_portfolio, apply_daily_news, buy_pr
                     get_home, set_home, get_interests, add_interest, remove_interest)
 from quiz import get_quiz_questions, submit_quiz_answer, get_coin_balance
 from ai_advisor import ask_ai_advisor, get_or_create_chat_session, get_chat_messages, save_chat_message
+from regulation_rag import sync_regulations
 
 st.set_page_config(page_title="하우스렌즈", page_icon="•", layout="wide")
 st.markdown("""
@@ -265,6 +266,14 @@ with tabs[3]:
             result=submit_quiz_answer(user_id,q["id"],q["choices"].index(answer),today); st.info(("정답입니다! +10코인" if result["correct"] else "오답입니다.")+" "+result.get("message",result["explanation"]))
 with tabs[4]:
     st.subheader("AI 투자 상담")
+    if home.get("region_code"):
+        st.caption(f"규제 RAG 기준 지역: {home['region_name']} · 화면을 열 때는 API를 호출하지 않습니다.")
+        if st.button("법제처 규제 정보 새로고침", key="refresh_regulations"):
+            try:
+                result = sync_regulations(home["region_code"], home["region_name"])
+                st.success(f"{result['saved']}건을 SQLite에 저장했습니다. 이후 상담부터 검색 근거로 사용합니다.")
+            except RuntimeError as exc:
+                st.error(str(exc))
     st.caption("테스트 모드: 상담 횟수 제한 없이 OpenAI LLM과 대화할 수 있습니다. 현재 포트폴리오와 오늘의 뉴스도 함께 참고합니다.")
     if st.session_state.get("advisor_user") != user_id:
         st.session_state.advisor_session_id = get_or_create_chat_session(user_id)
