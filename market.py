@@ -16,17 +16,38 @@ PROPERTIES = (
     ("heritage_village", "헤리티지 빌리지", 360_000_000, "구도심 재생과 문화 상권이 진행 중인 지역"),
     ("airport_city", "에어포트 시티", 430_000_000, "공항 접근성과 물류 산업의 영향을 받는 지역"),
     ("forest_hills", "포레스트 힐스", 295_000_000, "녹지와 쾌적성을 중시하는 주거 지역"),
+    ("sunset_bay", "선셋 베이", 455_000_000, "해변 산책로와 상업시설이 가까운 생활권"),
+    ("central_garden", "센트럴 가든", 575_000_000, "도심 공원과 업무지구를 잇는 주거 지역"),
+    ("smart_square", "스마트 스퀘어", 635_000_000, "신산업 기업과 교통망이 모이는 지역"),
+    ("blue_river", "블루 리버", 410_000_000, "수변 조망과 신축 주거 수요가 있는 지역"),
+    ("morning_village", "모닝 빌리지", 335_000_000, "조용한 생활환경과 학교 수요가 강한 지역"),
+    ("urban_forest", "어반 포레스트", 515_000_000, "도심 속 녹지와 문화시설을 누리는 지역"),
+    ("innovation_port", "이노베이션 포트", 495_000_000, "물류·산업 개발과 교통 호재가 있는 지역"),
+    ("hilltop_station", "힐탑 스테이션", 445_000_000, "역세권과 언덕 조망을 함께 갖춘 지역"),
+    ("silver_lake", "실버 레이크", 375_000_000, "호수공원과 여유로운 주거환경이 강점인 지역"),
+    ("nova_district", "노바 디스트릭트", 705_000_000, "첨단 업무시설과 고급 주거 수요가 공존하는 지역"),
 )
 NEWS_PATH = Path(__file__).with_name("news_data.json")
 
 # The simulator keeps its game indicators, but each core market now maps to an
 # actual Korean administrative region used by public-data ingestion and RAG.
 PROPERTY_REGIONS = {
-    "metro_center": ("11680", "서울 강남구"),
-    "education_town": ("11470", "서울 양천구"),
-    "coastal_hub": ("26350", "부산 해운대구"),
-    "green_industry": ("41220", "경기 평택시"),
-    "newtown_lake": ("36110", "세종시"),
+    # 실제 코드는 공공데이터 수집용으로만 사용하고, 화면에는 가상 지역명만 노출한다.
+    "metro_center": ("11680", "메트로 센터"),
+    "education_town": ("11470", "에듀 타운"),
+    "coastal_hub": ("26350", "코스탈 허브"),
+    "green_industry": ("41220", "그린 인더스트리"),
+    "newtown_lake": ("36110", "레이크 뉴타운"),
+    "sunset_bay": ("V1001", "선셋 베이"),
+    "central_garden": ("V1002", "센트럴 가든"),
+    "smart_square": ("V1003", "스마트 스퀘어"),
+    "blue_river": ("V1004", "블루 리버"),
+    "morning_village": ("V1005", "모닝 빌리지"),
+    "urban_forest": ("V1006", "어반 포레스트"),
+    "innovation_port": ("V1007", "이노베이션 포트"),
+    "hilltop_station": ("V1008", "힐탑 스테이션"),
+    "silver_lake": ("V1009", "실버 레이크"),
+    "nova_district": ("V1010", "노바 디스트릭트"),
 }
 
 def _seed(conn):
