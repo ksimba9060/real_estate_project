@@ -18,6 +18,16 @@ except ImportError:
 
 LAW_SEARCH_URL = "https://www.law.go.kr/DRF/lawSearch.do"
 
+def _setting(name, default=""):
+    value = os.getenv(name, "").strip().strip("'\"")
+    if value:
+        return value
+    try:
+        import streamlit as st
+        return str(st.secrets.get(name, default)).strip().strip("'\"")
+    except Exception:
+        return default
+
 
 def _law_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
     """Normalize the law.go.kr JSON response, which varies for one/many hits."""
@@ -32,7 +42,7 @@ def sync_regulations(region_code: str, region_name: str, query: str | None = Non
     This function is deliberately called by an explicit refresh action or a job,
     never by page rendering or the chat request path.
     """
-    oc = os.getenv("LAW_API_OC", "").strip()
+    oc = _setting("LAW_API_OC")
     if not oc:
         raise RuntimeError("LAW_API_OC is missing from .env")
     # 법제처 법령명 검색은 지자체명보다 주제어가 안정적이다. 지역 코드는
